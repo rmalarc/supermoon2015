@@ -1,0 +1,190 @@
+---
+title: 'Supermoon 2015, The full picture: Image Processing in R'
+author: "Mauricio Alarcon"
+date: "September 28, 2015"
+output: html_document
+email: rmalarc@msn.com
+---
+
+# What's the problem?
+
+There was no problem until [yesterday's supermoon](http://www.timeanddate.com/eclipse/lunar/2015-september-28).
+
+After hearing at random about this lunar eclipse, I decided to look up sometime at around 9PM. It was a perfectly clear night for some moon gazing!. I then pulled out my cammera and started taking some pics of the moon.
+
+I continued taking pictures every few minutes, without really noticing what was going on. It wasn't until I started reviewing the first pictures that the eclipse became evident. I was right in the middle of it. 
+
+Half way thru the eclipse, I started to realize (and regret) that I wasn't being very methodical about taking my pictures. All of the sudden I started to see how, if I had more pictures, I could put together a nice little time-lapse video of this astronomical phenomenon.
+
+The problem is obvious, I'm missing data!. Once I realized this, I started to thinker about how cool it would be to try to use some linear algebra in order to extrapolate the missing pictures. 
+
+Let's code.
+
+#The pictures
+
+These are the pictures obtained from the night in question:
+
+
+
+**1. When you roll a fair die 3 times, how many possible outcomes are there?**
+
+**2. What is the probability of getting a sum total of 3 when you roll a die two times?**
+
+**3. Assume a room of 25 strangers. What is the probability that two of them have the same birthday? Assume that all birthdays are equally likely and equal to 1/365 each. What happens to this probability when there are 50 people in the room?**
+
+**A.** 
+
+**1.** There are 6 times 6 times 6 total possible outcomes (216 to be exact)
+
+**2.** The event space where we get a sum of two dice equals three is comprised of these two outcomes: (2,1) and (1,2) out of a total of 6 times 6 possible outcomes. Therefore, the probability of getting a sum total of 3 when a die is rolled two times is 2/36 
+
+**3.** As we know from the traditional birthday problem, the probability that at least two people in the room of 25 strangers have the same birthday P(A) can be more easily calculated by getting to P(A') first (the probability that no two people in the room have the same birthday). With that, we can say that P(A) = 1 − P(A').
+
+For a room with 25 strangers:
+
+$P(A') = \frac{365}{365}\frac{364}{365}\frac{363}{365}\frac{362}{365}.....\frac{341}{365}$
+
+which equates to:
+
+$P(A') = \frac{\prod_{i=0}^{24}(365-i)}{365^{25}}$
+
+and 
+
+$P(A) = 1-P(A')$
+
+or in R:
+
+```{r warning=FALSE}
+people_in_room <- 25
+
+1 - prod(c(365:(365-(people_in_room-1))))/(365^people_in_room)
+
+```
+
+For a room with 50 people:
+
+```{r warning=FALSE}
+people_in_room <- 50
+
+1 - prod(c(365:(365-(people_in_room-1))))/(365^people_in_room)
+
+```
+
+As we can see above, with 50 people in the room the probability jumps to 97%
+
+---
+
+Let's see what happens with various room sizes:
+
+```{r warning=FALSE}
+
+try_for_all_people <- 100
+
+p_2_share_bday <- c()
+for(people_in_room in 1:try_for_all_people) 
+{
+  p <- 1 - prod(c(365:(365-(people_in_room-1))))/(365^people_in_room)
+  p_2_share_bday <- c(p_2_share_bday,p)
+}
+
+people_in_room <- c(1:try_for_all_people)
+plot(people_in_room,p_2_share_bday)
+```
+
+As we can see above, once you have a room with 60 people, it's almost certain that two people will share the same birthday!
+
+---
+
+# Problem 2 
+
+**Write a program to take a document in English and print out the estimated probabilities for each of the words that occur in that document. Your program should take in a file containing a large document and write out the probabilities of each of the words that appear in that document. Please remove all punctuation (quotes, commas, hyphens etc) and convert the words to lower case before you perform your calculations.**
+
+**Extend your program to calculate the probability of two words occurring adjacent to each other. It should take in a document, and two words (say the and for) and compute the probability of each of the words occurring in the document and the joint probability of both of them occurring together. The order of the two words is not important.**
+
+
+**A. ** 
+
+a. 
+
+```{r warning=FALSE}
+library(tm)
+library(knitr)
+assign6_text <- paste(readLines("/Users/malarcon/Google Drive/CUNY/IS605/week6/assign6/assign6.sample.txt"), collapse="\n")
+
+
+# Load file contents into a corpus
+corpus <- Corpus(VectorSource(assign6_text))
+
+# all to lowercase
+corpus <- tm_map(corpus, content_transformer(tolower))
+
+# remove punctuation
+corpus <- tm_map(corpus, removePunctuation)
+
+# strip extra whitespaces
+corpus <- tm_map(corpus, stripWhitespace)
+
+
+# create a term matrix for the document
+term_matrix <- as.matrix(DocumentTermMatrix(corpus))
+
+# Turn the frequency counts to probabilities by dividing by the total number of
+# words in the document 
+term_p_matrix <- term_matrix/sum(term_matrix)
+
+# Format the two vectors so we display: Word, Frequency, P(Word)
+output_df <- data.frame(t(term_matrix),t(term_p_matrix))
+colnames(output_df) <- c("Frequency","P(Word)") 
+
+# Show the top 50 words by frequency
+kable(head(output_df[order(-output_df$Frequency),],50) )
+
+```
+
+**b.**
+
+```{r warning=FALSE}
+#Given two words
+#compute the probability of each of the words occurring in the document 
+word_1 <- "the"
+word_2 <- "for"
+
+p_word_1 <- output_df[word_1,"P(Word)"]
+p_word_1
+p_word_2 <- output_df[word_2,"P(Word)"]
+p_word_2
+
+```
+
+For calculating the joint probability of both of them occurring together, we must consider the scenarios where we get word1 followed by word2 (W1W2) or word2 followed by word1 (W2W1)
+
+$P(W1W2) = \frac{Word1_frequency}{Total_word_count}\frac{Word2_frequency}{Total_word_count-1}$
+
+and
+
+$P(W2W1) = \frac{Word2_frequency}{Total_word_count}\frac{Word1_frequency}{Total_word_count-1}$
+
+
+Therefore:
+
+$P(W1W2 U W2W1)  = P(W1W2) + P(W2W1)$
+
+Let's beguin:
+
+```{r warning=FALSE}
+
+word_1_frequency <- output_df[word_1,"Frequency"]
+total_word_count <- sum(output_df[,"Frequency"])
+
+word_2_frequency <- output_df[word_2,"Frequency"]
+total_word_count_minus_1 <- total_word_count - 1
+
+p_w1w2 <- (word_1_frequency/total_word_count)*(word_2_frequency/total_word_count_minus_1)
+p_w1w2
+p_w2w1 <- (word_2_frequency/total_word_count)*(word_1_frequency/total_word_count_minus_1)
+p_w2w1
+
+p_w1w2_or_w2w1 <- p_w1w2 + p_w2w1
+p_w1w2_or_w2w1
+
+```
