@@ -1,8 +1,9 @@
 ---
-title: 'Super-moon 2015: Making a Video out of Pictures Using Linear Algebra in R'
+title: 'Super-moon 2015: Making a video out of a few pictures using linear algebra transformations in R'
 author: "Mauricio Alarcon"
 date: "September 28, 2015"
-output: html_document
+output:
+  html_document: default
 email: rmalarc@msn.com
 ---
 
@@ -16,7 +17,9 @@ I continued taking pictures every few minutes, without really noticing what was 
 
 Half way thru the eclipse, I started to realize (and regret) that I wasn't being very methodical about taking my pictures. All of the sudden I started to see how, if I had more pictures, I could put together a nice little time-lapse video of this astronomical phenomenon.
 
-The problem is obvious, I'm missing data!. Once I realized this, I started to thinker about how cool it would be to try to use some linear algebra in order to extrapolate the missing pictures. 
+The problem is obvious, I'm missing data!. 
+
+Once I realized this, I started to thinker about how cool it would be to try to use some linear algebra in order to extrapolate the missing pictures. 
 
 ##The Approach
 
@@ -30,7 +33,7 @@ Let's code.
 
 ---
 
-##The pictures: Basic photo editing
+##The pictures: Basic Photo Editing
 
 The idea is to accomplish the goal of estimating the missing pictures with minimum photo editing.
 
@@ -182,14 +185,21 @@ Let's code:
 ```{r warning=FALSE}
 
 plotMatrix <- function(matrix){
+  # It takes an image as a matrix and plots it out
   plot(imagematrix(matrix, type = "grey"), useRaster = TRUE) 
 }
 
 recomposeMatrix <- function(matrix_svd){
+  # reassembles a previously decomposed image from getImageSVDProjections
   return (matrix_svd$us %*% matrix_svd$sigma_k %*% matrix_svd$vs_t)
 }
 
 getImageSVDProjections <- function(exif_meta_data,image_no){
+  # This function takes the dataframe containing the list of key images and an image number
+  # It then downloads the image in question, decomposes it using svd and projects it to a 
+  # lower dimensional space (preset by the depth constant), returning a list with the
+  # u,v and sigma_k components
+  
   depth <- 100
   pic_url <- paste("https://raw.githubusercontent.com/rmalarc/supermoon2015/master/"
                    , exif_meta_data[image_no,"filename"]
@@ -265,7 +275,9 @@ Let's code:
 library(animation)
 
 LoadImageMatrix <- function(exif_meta_data,pic_no){
-  # image i
+  # This function calls the necesary functions that loads an image, denoises it and 
+  # returns the corresponding image matrix
+
   image <- getImageSVDProjections(exif_meta_data,pic_no)
   return(recomposeMatrix(image))
 }
@@ -273,43 +285,65 @@ LoadImageMatrix <- function(exif_meta_data,pic_no){
 par(mfrow=c(1,1)) 
 saveGIF({
   prev_i_pic_no <- -1
-  range <- seq(from=0, to=72, by=0.25) # we have up to 72 min worth of data, let's do 4 fpm
+  
+  # Set the time range I want to cover. We have 72 min worth of data, let's shoot for
+  # generating 4 frames per minute
+  range <- seq(from=0, to=72, by=0.25)
   range <- range*60 # turn to seconds
+  
+  # initialize variables
   image_i_matrix <- NA
   image_k_matrix <- NA
   
   i <- NA
   k <- NA
 
+  # iterate thru every desired time lapse in the range
   for (j in range) {
-    # find the nearest image i
+    # find the nearest key image i
+    
+    # the first time we enter the loop, image i is initialized picture # 1
     i_pic_no <- 1
+    
+    # once we iterate further, we need to look for the closest images i and k
     if (j > 0 ){
       i_pic_no<-max(exif_meta_data[exif_meta_data$elapsed_since_first_pic_sec<j,"pic_no"])
     }
     
     # check and see if we should be using a new key image
     if(i_pic_no != prev_i_pic_no) {
+      # We should be using a new set of key images i and k, load them up
       k_pic_no<-i_pic_no + 1
       image_i_matrix <- LoadImageMatrix(exif_meta_data,i_pic_no)
       image_k_matrix <- LoadImageMatrix(exif_meta_data,k_pic_no)
+      
       # i and k are the seconds elapsed since first pic of each pic
       i <- exif_meta_data[i_pic_no,"elapsed_since_first_pic_sec"]
       k <- exif_meta_data[k_pic_no,"elapsed_since_first_pic_sec"]
     }
     prev_i_pic_no <- i_pic_no
+    
+    # Do the linear combination of the key images i and k in order to generate image j
     c_k <- (j-i)/(k-i)
     c_i <- 1-c_k
     image_j_matrix <- c_i*image_i_matrix + c_k*image_k_matrix
+    
+    # Plot image J
     plotMatrix(image_j_matrix)
     }
   }, interval = 0.25, movie.name = "supermoon_2015.gif", ani.width = 500, ani.height = 500)
 
 ```
 
-...and.... Voila!!!
+The resulting animated gif is [here](http://natame.com/supermoon_2015.gif)
 
-![supermoon 2015 video](https://raw.githubusercontent.com/rmalarc/supermoon2015/master/supermoon_2015.gif)
+---
+
+##Converting the Animated GIF to a Video file
+
+The animated gif was then converved to MP4 video format using [Cloud Convert](https://cloudconvert.com/gif-to-mp4) and uploaded to YouTube.
+
+<iframe width="420" height="315" src="https://www.youtube.com/embed/lCR64sWCjlY" frameborder="0" allowfullscreen></iframe>
 
 ---
 
@@ -319,3 +353,5 @@ saveGIF({
 * I'm sure if I spend some time and centering the moon in all my key-frames, the output will be crispier.
 * Some of the key frames are blurry. I DID NOT USE A TRIPOD
 * The video you see above is actually at 4 frames per minute. Increasing the frame rate, should also make it smoother.
+* Increasing the number of frames per minute will result in a smoother video (and larger file)
+* Perpahs I could try and de-noise the initial key pictures as a whole in order to obtain some cross-picture blending
