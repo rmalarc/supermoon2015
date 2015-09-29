@@ -1,190 +1,321 @@
 ---
-title: 'Supermoon 2015, The full picture: Image Processing in R'
+title: 'Super-moon 2015: Making a Video out of Pictures Using Linear Algebra in R'
 author: "Mauricio Alarcon"
 date: "September 28, 2015"
 output: html_document
 email: rmalarc@msn.com
 ---
 
-# What's the problem?
+##What's the problem?
 
-There was no problem until [yesterday's supermoon](http://www.timeanddate.com/eclipse/lunar/2015-september-28).
+There was no problem until [yesterday's supermoon](http://www.timeanddate.com/eclipse/lunar/2015-september-28), when I decided to look up at the sky sometime at around 9PM. 
 
-After hearing at random about this lunar eclipse, I decided to look up sometime at around 9PM. It was a perfectly clear night for some moon gazing!. I then pulled out my cammera and started taking some pics of the moon.
+It was a perfectly clear night for some moon gazing!. I then pulled out my camera and started taking some pics of the moon.
 
-I continued taking pictures every few minutes, without really noticing what was going on. It wasn't until I started reviewing the first pictures that the eclipse became evident. I was right in the middle of it. 
+I continued taking pictures every few minutes, without really noticing what was going on. It wasn't until I started reviewing the first pictures and doing some Google searching that the eclipse became evident. I was right in the middle of it. 
 
 Half way thru the eclipse, I started to realize (and regret) that I wasn't being very methodical about taking my pictures. All of the sudden I started to see how, if I had more pictures, I could put together a nice little time-lapse video of this astronomical phenomenon.
 
 The problem is obvious, I'm missing data!. Once I realized this, I started to thinker about how cool it would be to try to use some linear algebra in order to extrapolate the missing pictures. 
 
+##The Approach
+
+* The pictures: Basic photo editing
+* Obtain the precise time when each picture was taken 
+* Denoise the pictures using SVD factorization
+* Can we estimate a missing picture using matrix linear combination of the SVD projections?
+* Estimate the missing frames (1 per minute) using matrix linear combination
+
 Let's code.
 
-#The pictures
+---
 
-These are the pictures obtained from the night in question:
+##The pictures: Basic photo editing
 
+The idea is to accomplish the goal of estimating the missing pictures with minimum photo editing.
 
+As you can see from below, the pictures were re-sized and zoomed so that the moon appears in the center of the picture with a consistent size. 
 
-**1. When you roll a fair die 3 times, how many possible outcomes are there?**
-
-**2. What is the probability of getting a sum total of 3 when you roll a die two times?**
-
-**3. Assume a room of 25 strangers. What is the probability that two of them have the same birthday? Assume that all birthdays are equally likely and equal to 1/365 each. What happens to this probability when there are 50 people in the room?**
-
-**A.** 
-
-**1.** There are 6 times 6 times 6 total possible outcomes (216 to be exact)
-
-**2.** The event space where we get a sum of two dice equals three is comprised of these two outcomes: (2,1) and (1,2) out of a total of 6 times 6 possible outcomes. Therefore, the probability of getting a sum total of 3 when a die is rolled two times is 2/36 
-
-**3.** As we know from the traditional birthday problem, the probability that at least two people in the room of 25 strangers have the same birthday P(A) can be more easily calculated by getting to P(A') first (the probability that no two people in the room have the same birthday). With that, we can say that P(A) = 1 − P(A').
-
-For a room with 25 strangers:
-
-$P(A') = \frac{365}{365}\frac{364}{365}\frac{363}{365}\frac{362}{365}.....\frac{341}{365}$
-
-which equates to:
-
-$P(A') = \frac{\prod_{i=0}^{24}(365-i)}{365^{25}}$
-
-and 
-
-$P(A) = 1-P(A')$
-
-or in R:
-
-```{r warning=FALSE}
-people_in_room <- 25
-
-1 - prod(c(365:(365-(people_in_room-1))))/(365^people_in_room)
+All pictures were re-sized to 500x500 pixels using the sips command:
 
 ```
-
-For a room with 50 people:
-
-```{r warning=FALSE}
-people_in_room <- 50
-
-1 - prod(c(365:(365-(people_in_room-1))))/(365^people_in_room)
-
+sips IMG_0* -z 500 500
 ```
 
-As we can see above, with 50 people in the room the probability jumps to 97%
+These are the [19 pictures](https://www.flickr.com/photos/10904202@N07/albums/72157659207098412) taken during the eclipse:
+
+![supermoon 2015 pics](https://raw.githubusercontent.com/rmalarc/supermoon2015/master/supermoon_contactsheet.png)
 
 ---
 
-Let's see what happens with various room sizes:
+##Obtain the precise time when each picture was taken 
 
-```{r warning=FALSE}
+Most digital cameras embed plenty of meta-data about the pictures as [EXIF Attributes](https://en.wikipedia.org/wiki/Exchangeable_image_file_format).
 
-try_for_all_people <- 100
+In order to extract these attributes, I used the [ExifTool by Phil Harvey](http://www.sno.phy.queensu.ca/~phil/exiftool/)
 
-p_2_share_bday <- c()
-for(people_in_room in 1:try_for_all_people) 
-{
-  p <- 1 - prod(c(365:(365-(people_in_room-1))))/(365^people_in_room)
-  p_2_share_bday <- c(p_2_share_bday,p)
-}
-
-people_in_room <- c(1:try_for_all_people)
-plot(people_in_room,p_2_share_bday)
+```
+exiftool *.jpg |grep "\(Create Date\|File Name\)"
 ```
 
-As we can see above, once you have a room with 60 people, it's almost certain that two people will share the same birthday!
+Here is a snippet of the output:
 
----
+```
+File Name                       : IMG_0084.jpg
+Create Date                     : 2015:09:27 21:24:53.00
+File Name                       : IMG_0085.jpg
+Create Date                     : 2015:09:27 21:25:47.10
+File Name                       : IMG_0086.jpg
+Create Date                     : 2015:09:27 21:26:32.60
+File Name                       : IMG_0087.jpg
+Create Date                     : 2015:09:27 21:27:51.60
+.
+.
+.
+.
+.
+File Name                       : IMG_0100.jpg
+Create Date                     : 2015:09:27 22:07:08.40
+File Name                       : IMG_0101.jpg
+Create Date                     : 2015:09:27 22:15:00.10
+File Name                       : IMG_0102.jpg
+Create Date                     : 2015:09:27 22:37:17.00
+```
 
-# Problem 2 
+With this list, some copy and paste and excel formulas, we end up with the following R data-frame:
 
-**Write a program to take a document in English and print out the estimated probabilities for each of the words that occur in that document. Your program should take in a file containing a large document and write out the probabilities of each of the words that appear in that document. Please remove all punctuation (quotes, commas, hyphens etc) and convert the words to lower case before you perform your calculations.**
-
-**Extend your program to calculate the probability of two words occurring adjacent to each other. It should take in a document, and two words (say the and for) and compute the probability of each of the words occurring in the document and the joint probability of both of them occurring together. The order of the two words is not important.**
-
-
-**A. ** 
-
-a. 
 
 ```{r warning=FALSE}
-library(tm)
+
 library(knitr)
-assign6_text <- paste(readLines("/Users/malarcon/Google Drive/CUNY/IS605/week6/assign6/assign6.sample.txt"), collapse="\n")
+pic_no=c(1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19)
+filename = c('IMG_0084.jpg','IMG_0085.jpg','IMG_0086.jpg','IMG_0087.jpg','IMG_0088.jpg','IMG_0089.jpg','IMG_0090.jpg','IMG_0091.jpg','IMG_0092.jpg','IMG_0093.jpg','IMG_0094.jpg','IMG_0095.jpg','IMG_0096.jpg','IMG_0097.jpg','IMG_0098.jpg','IMG_0099.jpg','IMG_0100.jpg','IMG_0101.jpg','IMG_0102.jpg')
+elapsed_since_first_pic_sec= c(0,54,99,178,288,329,380,570,946,1106,1439,1592,1726,1851,2015,2198,2535,3007,4344)
+elapsed_since_first_pic_min =c(0,0,1,2,4,5,6,9,15,18,23,26,28,30,33,36,42,50,72)
+exif_meta_data <- data.frame(pic_no,filename,elapsed_since_first_pic_sec,elapsed_since_first_pic_min, stringsAsFactors=FALSE)
 
-
-# Load file contents into a corpus
-corpus <- Corpus(VectorSource(assign6_text))
-
-# all to lowercase
-corpus <- tm_map(corpus, content_transformer(tolower))
-
-# remove punctuation
-corpus <- tm_map(corpus, removePunctuation)
-
-# strip extra whitespaces
-corpus <- tm_map(corpus, stripWhitespace)
-
-
-# create a term matrix for the document
-term_matrix <- as.matrix(DocumentTermMatrix(corpus))
-
-# Turn the frequency counts to probabilities by dividing by the total number of
-# words in the document 
-term_p_matrix <- term_matrix/sum(term_matrix)
-
-# Format the two vectors so we display: Word, Frequency, P(Word)
-output_df <- data.frame(t(term_matrix),t(term_p_matrix))
-colnames(output_df) <- c("Frequency","P(Word)") 
-
-# Show the top 50 words by frequency
-kable(head(output_df[order(-output_df$Frequency),],50) )
-
+kable(exif_meta_data)
 ```
 
-**b.**
+---
+
+##Denoise the pictures using SVD factorization
+
+Let's use SVD Factorization in order to compress the images and reduce random noise. 
+
+First, let's pick and image and find a good compression factor that we can apply to all the images in the data-set:
+
 
 ```{r warning=FALSE}
-#Given two words
-#compute the probability of each of the words occurring in the document 
-word_1 <- "the"
-word_2 <- "for"
+library(jpeg)
+library(ripa)
+library(RCurl)
 
-p_word_1 <- output_df[word_1,"P(Word)"]
-p_word_1
-p_word_2 <- output_df[word_2,"P(Word)"]
-p_word_2
+#select first image in dataset
+pic_url <- paste("https://raw.githubusercontent.com/rmalarc/supermoon2015/master/", exif_meta_data[1,"filename"],sep="")
+
+pic_data <- readJPEG(getURLContent(pic_url))
+
+pic_matrix <- imagematrix(pic_data, type = "grey")
+
+
+pic_matrix_svd <- svd(pic_matrix)
+d <- diag(pic_matrix_svd$d)
+u <- pic_matrix_svd$u
+v <- pic_matrix_svd$v
+plot(1:length(pic_matrix_svd$d),pic_matrix_svd$d)
 
 ```
 
-For calculating the joint probability of both of them occurring together, we must consider the scenarios where we get word1 followed by word2 (W1W2) or word2 followed by word1 (W2W1)
+Let's try a factor of 100 to de-noise and compress our images.
 
-$P(W1W2) = \frac{Word1_frequency}{Total_word_count}\frac{Word2_frequency}{Total_word_count-1}$
+```{r warning=FALSE}
+
+# de-noised and compressed pic
+depth <- 100
+us <- as.matrix(u[, 1:depth])
+vs <- as.matrix(v[, 1:depth])
+ds <- as.matrix(d[1:depth, 1:depth])
+
+pic_denoised <- us %*% ds %*% t(vs)
+
+pic_matrix_denoised <- imagematrix(pic_denoised, type = "grey")
+
+par(mfrow=c(1,2)) 
+
+# original picture
+plot(pic_matrix, useRaster = TRUE)
+
+# Denoised picture
+plot(pic_matrix_denoised, useRaster = TRUE)
+
+
+```
+
+A factor of 100 seems visually suitable for these set of pictures.
+
+---
+
+## Can we estimate a missing picture using matrix linear combination?
+
+The idea is to obtain the matrix $A_{j}$ that corresponds to the picture that is in between $P_{i}$ and $P_{k}$ from the corresponding matrices $A_{i}$ and  $A_{k}$. The strategy is to do a linear combination by multiplying each matrix for a constant factor and adding up the two as follows:
+
+$A_{j} = c_{i}A_{i} + c_{k}A_{k}$
+
+where:
+
+$c_{k} = \frac{j-i}{k-i}$
 
 and
 
-$P(W2W1) = \frac{Word2_frequency}{Total_word_count}\frac{Word1_frequency}{Total_word_count-1}$
+$c_{i} = 1-c_{k}$
+
+As we can see here, let's try with image 1 and 9 and see if we can get anything that looks like image 6
 
 
-Therefore:
+```{r warning=FALSE}
+kable(exif_meta_data[c(1,6,9),])
+```
 
-$P(W1W2 U W2W1)  = P(W1W2) + P(W2W1)$
-
-Let's beguin:
+Let's code:
 
 ```{r warning=FALSE}
 
-word_1_frequency <- output_df[word_1,"Frequency"]
-total_word_count <- sum(output_df[,"Frequency"])
+plotMatrix <- function(matrix){
+  plot(imagematrix(matrix, type = "grey"), useRaster = TRUE) 
+}
 
-word_2_frequency <- output_df[word_2,"Frequency"]
-total_word_count_minus_1 <- total_word_count - 1
+recomposeMatrix <- function(matrix_svd){
+  return (matrix_svd$us %*% matrix_svd$sigma_k %*% matrix_svd$vs_t)
+}
 
-p_w1w2 <- (word_1_frequency/total_word_count)*(word_2_frequency/total_word_count_minus_1)
-p_w1w2
-p_w2w1 <- (word_2_frequency/total_word_count)*(word_1_frequency/total_word_count_minus_1)
-p_w2w1
+getImageSVDProjections <- function(exif_meta_data,image_no){
+  depth <- 100
+  pic_url <- paste("https://raw.githubusercontent.com/rmalarc/supermoon2015/master/"
+                   , exif_meta_data[image_no,"filename"]
+                   ,sep=""
+                   )
+  pic_data <- readJPEG(getURLContent(pic_url))
 
-p_w1w2_or_w2w1 <- p_w1w2 + p_w2w1
-p_w1w2_or_w2w1
+  pic_matrix <- imagematrix(pic_data, type = "grey")
+
+  pic_matrix_svd <- svd(pic_matrix)
+  d <- diag(pic_matrix_svd$d)
+  u <- pic_matrix_svd$u
+  v <- pic_matrix_svd$v
+  
+  us <- as.matrix(u[, 1:depth])
+  vs_t <- t(as.matrix(v[, 1:depth]))
+  sigma_k <- as.matrix(d[1:depth, 1:depth])
+
+  return(list(us=us,sigma_k=sigma_k,vs_t=vs_t))
+}
+
+# image i
+image_1 <- getImageSVDProjections(exif_meta_data,1)
+# image k
+image_9 <- getImageSVDProjections(exif_meta_data,9)
+
+# our CONTROL image j
+image_6 <- getImageSVDProjections(exif_meta_data,6)
+
+
+# i and k are the seconds elapsed since first pic of each pic
+i <- exif_meta_data[1,"elapsed_since_first_pic_sec"]
+j <- exif_meta_data[6,"elapsed_since_first_pic_sec"]
+k <- exif_meta_data[9,"elapsed_since_first_pic_sec"]
+
+c_k <- (j-i)/(k-i)
+c_i <- 1-c_k
+
+image_1_matrix <- recomposeMatrix(image_1)
+image_6_matrix <- recomposeMatrix(image_6)
+image_9_matrix <- recomposeMatrix(image_9)
+image_j <- c_i*image_1_matrix + c_k*image_9_matrix
+
+
+#estimated image
+par(mfrow=c(1,3)) 
+plotMatrix(image_1_matrix)
+plotMatrix(image_j)
+plotMatrix(image_9_matrix)
 
 ```
+
+As we can see above, our estimated image results in a nice cross-fade between image 1 and 9. This raises the question, how does this image J compare to our control image #6?
+
+```{r warning=FALSE}
+par(mfrow=c(1,2)) 
+plotMatrix(image_6_matrix)
+plotMatrix(image_j)
+```
+
+Close enough I would say!
+
+---
+
+## Estimate the missing frames (1 per minute at least) by linear combination of matrices
+
+So, if we look at the table with the pictures taken, we have a span of 72 minutes with pictures. The idea is to generate one picture per minute, create an animation and save it as an animated gif.
+
+
+Let's code:
+
+```{r warning=FALSE, eval=FALSE}
+library(animation)
+
+LoadImageMatrix <- function(exif_meta_data,pic_no){
+  # image i
+  image <- getImageSVDProjections(exif_meta_data,pic_no)
+  return(recomposeMatrix(image))
+}
+
+par(mfrow=c(1,1)) 
+saveGIF({
+  prev_i_pic_no <- -1
+  range <- seq(from=0, to=72, by=0.25) # we have up to 72 min worth of data, let's do 4 fpm
+  range <- range*60 # turn to seconds
+  image_i_matrix <- NA
+  image_k_matrix <- NA
+  
+  i <- NA
+  k <- NA
+
+  for (j in range) {
+    # find the nearest image i
+    i_pic_no <- 1
+    if (j > 0 ){
+      i_pic_no<-max(exif_meta_data[exif_meta_data$elapsed_since_first_pic_sec<j,"pic_no"])
+    }
+    
+    # check and see if we should be using a new key image
+    if(i_pic_no != prev_i_pic_no) {
+      k_pic_no<-i_pic_no + 1
+      image_i_matrix <- LoadImageMatrix(exif_meta_data,i_pic_no)
+      image_k_matrix <- LoadImageMatrix(exif_meta_data,k_pic_no)
+      # i and k are the seconds elapsed since first pic of each pic
+      i <- exif_meta_data[i_pic_no,"elapsed_since_first_pic_sec"]
+      k <- exif_meta_data[k_pic_no,"elapsed_since_first_pic_sec"]
+    }
+    prev_i_pic_no <- i_pic_no
+    c_k <- (j-i)/(k-i)
+    c_i <- 1-c_k
+    image_j_matrix <- c_i*image_i_matrix + c_k*image_k_matrix
+    plotMatrix(image_j_matrix)
+    }
+  }, interval = 0.25, movie.name = "supermoon_2015.gif", ani.width = 500, ani.height = 500)
+
+```
+
+...and.... Voila!!!
+
+![supermoon 2015 video](https://raw.githubusercontent.com/rmalarc/supermoon2015/master/supermoon_2015.gif)
+
+---
+
+##Conclusion
+
+* Linear algebra in R is cool!
+* I'm sure if I spend some time and centering the moon in all my key-frames, the output will be crispier.
+* Some of the key frames are blurry. I DID NOT USE A TRIPOD
+* The video you see above is actually at 4 frames per minute. Increasing the frame rate, should also make it smoother.
