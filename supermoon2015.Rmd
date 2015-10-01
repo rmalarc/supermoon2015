@@ -3,11 +3,12 @@ title: 'Super-moon 2015: Making a video out of a few pictures using linear algeb
 author: "Mauricio Alarcon"
 date: "September 28, 2015"
 output:
-  html_document: default
+  html_document: 
+    fig_height: 4
 email: rmalarc@msn.com
 ---
 
-##What's the problem?
+## What's the problem?
 
 There was no problem until [yesterday's supermoon](http://www.timeanddate.com/eclipse/lunar/2015-september-28), when I decided to look up at the sky sometime at around 9PM. 
 
@@ -21,7 +22,7 @@ The problem is obvious, I'm missing data!.
 
 Once I realized this, I started to thinker about how cool it would be to try to use some linear algebra in order to extrapolate the missing pictures. 
 
-##The Approach
+## The Approach
 
 * The pictures: Basic photo editing
 * Obtain the precise time when each picture was taken 
@@ -33,7 +34,7 @@ Let's code.
 
 ---
 
-##The pictures: Basic Photo Editing
+## The pictures: Basic Photo Editing
 
 The idea is to accomplish the goal of estimating the missing pictures with minimum photo editing.
 
@@ -51,7 +52,7 @@ These are the [19 pictures](https://www.flickr.com/photos/10904202@N07/albums/72
 
 ---
 
-##Obtain the precise time when each picture was taken 
+## Obtain the precise time when each picture was taken 
 
 Most digital cameras embed plenty of meta-data about the pictures as [EXIF Attributes](https://en.wikipedia.org/wiki/Exchangeable_image_file_format).
 
@@ -88,7 +89,7 @@ Create Date                     : 2015:09:27 22:37:17.00
 With this list, some copy and paste and excel formulas, we end up with the following R data-frame:
 
 
-```{r warning=FALSE}
+```{r pics_dataset, warning=FALSE}
 
 library(knitr)
 pic_no=c(1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19)
@@ -102,14 +103,14 @@ kable(exif_meta_data)
 
 ---
 
-##Denoise the pictures using SVD factorization
+## Denoise the pictures using SVD factorization
 
 Let's use SVD Factorization in order to compress the images and reduce random noise. 
 
 First, let's pick and image and find a good compression factor that we can apply to all the images in the data-set:
 
 
-```{r warning=FALSE}
+```{r denoise_pics, warning=FALSE}
 library(jpeg)
 library(ripa)
 library(RCurl)
@@ -176,13 +177,13 @@ $c_{i} = 1-c_{k}$
 As we can see here, let's try with image 1 and 9 and see if we can get anything that looks like image 6
 
 
-```{r warning=FALSE}
+```{r show_test_pics_data, warning=FALSE}
 kable(exif_meta_data[c(1,6,9),])
 ```
 
 Let's code:
 
-```{r warning=FALSE}
+```{r estimate_image, warning=FALSE}
 
 plotMatrix <- function(matrix){
   # It takes an image as a matrix and plots it out
@@ -254,7 +255,7 @@ plotMatrix(image_9_matrix)
 
 As we can see above, our estimated image results in a nice cross-fade between image 1 and 9. This raises the question, how does this image J compare to our control image #6?
 
-```{r warning=FALSE}
+```{r comparison, warning=FALSE}
 par(mfrow=c(1,2)) 
 plotMatrix(image_6_matrix)
 plotMatrix(image_j)
@@ -271,7 +272,7 @@ So, if we look at the table with the pictures taken, we have a span of 72 minute
 
 Let's code:
 
-```{r warning=FALSE, eval=FALSE}
+```{r estimate_missing_frames, warning=FALSE, eval=FALSE}
 library(animation)
 
 LoadImageMatrix <- function(exif_meta_data,pic_no){
@@ -339,7 +340,7 @@ The resulting animated gif is [here](http://natame.com/supermoon_2015.gif)
 
 ---
 
-##Converting the Animated GIF to a Video file
+## Converting the Animated GIF to a Video file
 
 The animated gif was then converved to MP4 video format using [Cloud Convert](https://cloudconvert.com/gif-to-mp4) and uploaded to YouTube.
 
@@ -347,11 +348,10 @@ The animated gif was then converved to MP4 video format using [Cloud Convert](ht
 
 ---
 
-##Conclusion
+## Conclusion
 
 * Linear algebra in R is cool!
 * I'm sure if I spend some time and centering the moon in all my key-frames, the output will be crispier.
 * Some of the key frames are blurry. I DID NOT USE A TRIPOD
-* The video you see above is actually at 4 frames per minute. Increasing the frame rate, should also make it smoother.
-* Increasing the number of frames per minute will result in a smoother video (and larger file)
+* The video you see above is actually at 4 frames per minute. Increasing the number of frames per minute will result in a smoother video (and larger file)
 * Perpahs I could try and de-noise the initial key pictures as a whole in order to obtain some cross-picture blending
